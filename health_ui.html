@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OSRM Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07080c;--s1:#0e1017;--s2:#151820;--s3:#1c2030;--brd:#252a3a;
+  --tx:#d4d8e8;--txd:#5a6080;
+  --grn:#34d399;--grn2:#34d39922;
+  --red:#f87171;--red2:#f8717120;
+  --amb:#fbbf24;--amb2:#fbbf2420;
+  --blu:#60a5fa;--blu2:#60a5fa18;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);font-family:'Outfit',sans-serif;min-height:100vh}
+.w{max-width:1280px;margin:0 auto;padding:28px 20px}
+
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px;flex-wrap:wrap;gap:12px}
+.hdr h1{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;letter-spacing:-.5px}
+.hdr h1 span{color:var(--txd);font-weight:300}
+.hr{display:flex;align-items:center;gap:14px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--txd)}
+.ld{width:7px;height:7px;border-radius:50%;background:var(--grn);box-shadow:0 0 10px var(--grn);animation:bl 2s ease infinite}
+.ld.wa{background:var(--amb);box-shadow:0 0 10px var(--amb)}
+.ld.er{background:var(--red);box-shadow:0 0 10px var(--red);animation:none}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
+
+.st{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:2px;color:var(--txd);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--brd)}
+
+.cts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:24px}
+.ct{display:flex;align-items:center;gap:7px;background:var(--s1);border:1px solid var(--brd);border-radius:6px;padding:6px 12px;font-family:'IBM Plex Mono',monospace;font-size:11px}
+.ct .d{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ct .d.up{background:var(--grn);box-shadow:0 0 5px var(--grn)}
+.ct .d.dn{background:var(--red);box-shadow:0 0 5px var(--red)}
+.ct .d.pa{background:var(--amb);box-shadow:0 0 5px var(--amb)}
+.ct .n{color:var(--tx)}.ct .s{color:var(--txd);font-size:10px;margin-left:4px}
+
+.rg{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:28px}
+@media(max-width:900px){.rg{grid-template-columns:1fr}}
+.rc{background:var(--s1);border:1px solid var(--brd);border-radius:10px;padding:20px;position:relative;overflow:hidden}
+.rc::after{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.rc.ok::after{background:var(--grn)}.rc.bl::after{background:var(--blu);animation:pb 1.5s ease infinite}
+.rc.dg::after{background:var(--amb)}.rc.dn::after{background:var(--red)}
+@keyframes pb{0%,100%{opacity:.4}50%{opacity:1}}
+
+.rt{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.rn{display:flex;align-items:center;gap:10px}
+.rn .i{font-size:22px}.rn .t{font-weight:600;font-size:16px;text-transform:capitalize}
+.rn .p{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--txd);margin-left:2px}
+.bg{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding:4px 10px;border-radius:5px}
+.bg.r{background:var(--grn2);color:var(--grn)}.bg.b{background:var(--blu2);color:var(--blu)}
+.bg.s{background:var(--red2);color:var(--red)}.bg.d{background:var(--amb2);color:var(--amb)}
+
+.rb{display:flex;align-items:center;gap:8px;background:var(--blu2);border:1px solid #60a5fa30;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--blu)}
+.sp{width:12px;height:12px;border:2px solid var(--blu);border-top-color:transparent;border-radius:50%;animation:sn .8s linear infinite;flex-shrink:0}
+@keyframes sn{to{transform:rotate(360deg)}}
+
+.sg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.si{background:var(--s2);border-radius:6px;padding:10px}
+.si .sl{font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--txd);margin-bottom:3px}
+.si .sv{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500}
+.sv.fr{color:var(--grn)}.sv.sa{color:var(--amb)}.sv.no{color:var(--red)}
+
+.pp{display:flex;gap:2px;margin-bottom:12px}
+.ps{flex:1;text-align:center;background:var(--s2);padding:6px 2px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--txd)}
+.ps:first-child{border-radius:4px 0 0 4px}.ps:last-child{border-radius:0 4px 4px 0}
+.ps .pv{display:block;font-size:11px;font-weight:500;color:var(--tx);margin-top:2px}.ps .pv.na{color:var(--txd);font-weight:300}
+.ps.active{background:#60a5fa18;color:var(--blu)}.ps.active .pv{color:var(--blu)}
+
+.mp{margin-top:10px;padding-top:10px;border-top:1px solid var(--brd)}
+.mp summary{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--txd);cursor:pointer;text-transform:uppercase;letter-spacing:1px;user-select:none}
+.mp summary:hover{color:var(--tx)}
+.mp-inner{margin-top:8px}
+.map-svg{width:100%;height:auto;display:block;background:var(--s2);border-radius:6px}
+.map-svg path.region{stroke-width:.3;stroke:var(--brd);transition:fill .3s}
+.map-svg .grid-line{stroke:var(--brd);stroke-width:.15;stroke-dasharray:2,2}
+.tgs{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.tg{font-family:'IBM Plex Mono',monospace;font-size:9px;background:var(--s2);border:1px solid var(--brd);border-radius:3px;padding:1px 6px;color:var(--txd)}
+
+.ft{text-align:center;margin-top:28px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--txd);opacity:.5}
+.ft a{color:var(--blu);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="w">
+  <div class="hdr">
+    <h1>OSRM Monitor <span>/ routing health</span></h1>
+    <div class="hr"><div class="ld" id="gd"></div><span id="gs">Connecting…</span><span id="ts">—</span></div>
+  </div>
+  <div class="st">Docker Containers</div>
+  <div class="cts" id="cts"><div class="ct"><span class="s">Loading…</span></div></div>
+  <div class="st">Routers</div>
+  <div class="rg" id="rg"></div>
+  <div class="ft"><a href="/api">JSON API</a> · <a href="/stream">SSE</a> · :5010 · live every 5 s</div>
+</div>
+<script>
+const IC  = {train:"\u{1f686}", ferry:"\u26f4\ufe0f", bus:"\u{1f68c}", aerialway:"\u{1f6a1}"};
+const CLR = {train:"#34d399",   ferry:"#60a5fa",      bus:"#fbbf24",   aerialway:"#a78bfa"};
+const PHASE_STEP = {downloading:0, filtering:1, merging:2, extracting:3, partitioning:3, customizing:3, building:3};
+
+// ─── KML cache ───────────────────────────────────────────────────────────
+// regionPath (e.g. "europe/france") → array of polygon rings, each ring = [[lon,lat],...]
+const kmlCache = {};
+const kmlLoading = new Set();
+
+function parseKmlCoords(text) {
+  // Extract all <coordinates> blocks, return array of rings
+  const rings = [];
+  const re = /<coordinates[^>]*>([\s\S]*?)<\/coordinates>/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const coords = [];
+    const lines = m[1].trim().split(/\s+/);
+    for (const line of lines) {
+      const parts = line.split(",");
+      if (parts.length >= 2) {
+        const lon = parseFloat(parts[0]);
+        const lat = parseFloat(parts[1]);
+        if (!isNaN(lon) && !isNaN(lat)) coords.push([lon, lat]);
+      }
+    }
+    if (coords.length > 2) rings.push(coords);
+  }
+  return rings;
+}
+
+async function loadKml(regionPath) {
+  if (kmlCache[regionPath] || kmlLoading.has(regionPath)) return;
+  kmlLoading.add(regionPath);
+  try {
+    const url = "/kml/" + regionPath + ".kml";
+    const r = await fetch(url);
+    if (r.ok) {
+      const text = await r.text();
+      kmlCache[regionPath] = parseKmlCoords(text);
+    } else {
+      kmlCache[regionPath] = [];
+    }
+  } catch (e) {
+    kmlCache[regionPath] = [];
+  }
+  kmlLoading.delete(regionPath);
+}
+
+async function loadAllKmls(countries) {
+  // Load all KMLs for all router types
+  const allPaths = new Set();
+  for (const paths of Object.values(countries)) {
+    for (const p of paths) allPaths.add(p);
+  }
+  await Promise.all([...allPaths].map(p => loadKml(p)));
+}
+
+function buildMapSvg(regions, color) {
+  // regions = array of regionPaths for this router
+  // Collect all rings, compute bounding box, render SVG
+  const allRings = [];
+  for (const rp of regions) {
+    const rings = kmlCache[rp];
+    if (rings) allRings.push(...rings);
+  }
+
+  if (allRings.length === 0) {
+    return '<div style="text-align:center;padding:16px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--txd)">Loading map…</div>';
+  }
+
+  // Bounding box with padding
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  for (const ring of allRings) {
+    for (const [lon, lat] of ring) {
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+  }
+
+  const padLon = (maxLon - minLon) * 0.08 + 2;
+  const padLat = (maxLat - minLat) * 0.08 + 2;
+  minLon -= padLon; maxLon += padLon;
+  minLat -= padLat; maxLat += padLat;
+
+  const W = 500;
+  const spanLon = maxLon - minLon;
+  const spanLat = maxLat - minLat;
+  const H = Math.max(80, Math.min(300, W * (spanLat / spanLon)));
+
+  const px = lon => ((lon - minLon) / spanLon) * W;
+  const py = lat => ((maxLat - lat) / spanLat) * H;
+
+  let paths = "";
+
+  // Grid lines
+  const gridLonStep = spanLon > 100 ? 30 : spanLon > 40 ? 10 : 5;
+  const gridLatStep = spanLat > 60 ? 20 : spanLat > 30 ? 10 : 5;
+  const startLon = Math.ceil(minLon / gridLonStep) * gridLonStep;
+  const startLat = Math.ceil(minLat / gridLatStep) * gridLatStep;
+  for (let lon = startLon; lon <= maxLon; lon += gridLonStep) {
+    const x = px(lon);
+    paths += `<line class="grid-line" x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H}"/>`;
+  }
+  for (let lat = startLat; lat <= maxLat; lat += gridLatStep) {
+    const y = py(lat);
+    paths += `<line class="grid-line" x1="0" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}"/>`;
+  }
+
+  // Region polygons
+  for (const ring of allRings) {
+    let d = "";
+    for (let i = 0; i < ring.length; i++) {
+      const x = px(ring[i][0]).toFixed(1);
+      const y = py(ring[i][1]).toFixed(1);
+      d += (i === 0 ? "M" : "L") + x + "," + y;
+    }
+    d += "Z";
+    paths += `<path class="region" d="${d}" fill="${color}" fill-opacity="0.4"/>`;
+  }
+
+  return `<svg class="map-svg" viewBox="0 0 ${W} ${H.toFixed(0)}" xmlns="http://www.w3.org/2000/svg">${paths}</svg>`;
+}
+
+// ─── formatting ──────────────────────────────────────────────────────────
+function fmt(s){
+  if(s==null) return {t:"—",c:"na"};
+  if(s<60) return {t:s+"s",c:""};
+  if(s<3600) return {t:Math.floor(s/60)+"m",c:""};
+  return {t:Math.floor(s/3600)+"h "+Math.floor((s%3600)/60)+"m",c:""};
+}
+function fmtB(b){
+  if(!b) return "—";
+  if(b<1048576) return (b/1024).toFixed(0)+" KB";
+  if(b<1073741824) return (b/1048576).toFixed(1)+" MB";
+  return (b/1073741824).toFixed(2)+" GB";
+}
+function fmtAge(d,h){
+  if(d==null) return {t:"no data",c:"no"};
+  if(d===0) return {t:h+"h ago",c:"fr"};
+  if(d<7) return {t:d+"d "+h+"h",c:"fr"};
+  return {t:d+"d "+h+"h",c:"sa"};
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+
+// ─── render ──────────────────────────────────────────────────────────────
+function render(data){
+  document.getElementById("ts").textContent = new Date(data.checked_at).toLocaleTimeString();
+
+  const svcs = data.services;
+  const allUp  = Object.values(svcs).every(s => s.container === "running");
+  const anyUp  = Object.values(svcs).some(s => s.container === "running");
+  const anyBld = Object.values(svcs).some(s => s.build_phase);
+  const gd = document.getElementById("gd"), gs = document.getElementById("gs");
+  if      (allUp && !anyBld) { gd.className="ld";    gs.textContent="All operational"; }
+  else if (anyBld)           { gd.className="ld wa";  gs.textContent="Build in progress"; }
+  else if (anyUp)            { gd.className="ld wa";  gs.textContent="Partial"; }
+  else                       { gd.className="ld er";  gs.textContent="All down"; }
+
+  // Containers
+  const cEl = document.getElementById("cts");
+  cEl.innerHTML = (data.containers || []).map(c => {
+    const up = c.state === "running";
+    const pa = c.state === "restarting" || c.state === "paused";
+    return `<div class="ct"><div class="d ${up?"up":pa?"pa":"dn"}"></div><span class="n">${esc(c.name)}</span><span class="s">${esc(c.status)}${c.ports?" · "+esc(c.ports):""}</span></div>`;
+  }).join("") || '<div class="ct"><span class="s">No containers (Docker socket mounted?)</span></div>';
+
+  // Router cards
+  const rEl = document.getElementById("rg");
+  const openMap = {};
+  rEl.querySelectorAll("details[data-k]").forEach(d => { if(d.open) openMap[d.dataset.k] = true; });
+
+  let html = "";
+  for (const [name, svc] of Object.entries(svcs)) {
+    const running  = svc.container === "running";
+    const hasData  = svc.data.built != null;
+    const building = svc.build_phase != null;
+    const cls   = building ? "bl" : running && hasData ? "ok" : running ? "dg" : "dn";
+    const bgCls = building ? "b"  : running ? "r" : hasData ? "d" : "s";
+    const bgTxt = building ? svc.build_phase : svc.container;
+
+    const bs = svc.build_stats;
+    const age = fmtAge(svc.data.age_days, svc.data.age_hours);
+    const mergeSize = bs.merge ? bs.merge.size_bytes : null;
+    const totalF = fmt(bs.total_duration_s > 0 ? bs.total_duration_s : null);
+
+    const dlDur  = bs.downloads.reduce((a,d) => a + (d.duration_s||0), 0);
+    const fltDur = bs.filters.reduce((a,d) => a + (d.duration_s||0), 0);
+    const dF = fmt(bs.downloads.length ? dlDur : null);
+    const fF = fmt(bs.filters.length ? fltDur : null);
+    const mF = fmt(bs.merge ? bs.merge.duration_s : null);
+    const oF = fmt(bs.osrm_build ? bs.osrm_build.duration_s : null);
+
+    const activeIdx = building ? (PHASE_STEP[svc.build_phase] ?? -1) : -1;
+    const bldH = building ? `<div class="rb"><div class="sp"></div>${esc(svc.build_phase)}…</div>` : "";
+
+    // Map
+    const countries = data.countries[name] || [];
+    const allLoaded = countries.every(c => kmlCache[c]);
+    const mapSvg = allLoaded && countries.length ? buildMapSvg(countries, CLR[name]) : (countries.length ? '<div style="text-align:center;padding:16px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--txd)">Loading map…</div>' : '');
+    const tags = countries.map(c => {
+      const parts = c.split("/");
+      return parts[parts.length - 1];
+    });
+    const mk = name + "-map";
+    const wasOpen = openMap[mk];
+
+    const mapH = countries.length
+      ? `<details class="mp" data-k="${mk}"${wasOpen?" open":""}>
+           <summary>${countries.length} regions</summary>
+           <div class="mp-inner">
+             ${mapSvg}
+             <div class="tgs">${tags.map(t=>`<span class="tg">${t}</span>`).join("")}</div>
+           </div>
+         </details>`
+      : "";
+
+    html += `
+    <div class="rc ${cls}">
+      <div class="rt">
+        <div class="rn"><span class="i">${IC[name]}</span><span class="t">${name}</span><span class="p">:${svc.port}</span></div>
+        <div class="bg ${bgCls}">${esc(bgTxt)}</div>
+      </div>
+      ${bldH}
+      <div class="sg">
+        <div class="si"><div class="sl">Data age</div><div class="sv ${age.c}">${age.t}</div></div>
+        <div class="si"><div class="sl">Merged</div><div class="sv">${fmtB(mergeSize)}</div></div>
+        <div class="si"><div class="sl">Build time</div><div class="sv">${totalF.t}</div></div>
+      </div>
+      <div class="pp">
+        <div class="ps${activeIdx===0?" active":""}">DL<span class="pv ${dF.c}">${dF.t}</span></div>
+        <div class="ps${activeIdx===1?" active":""}">Filter<span class="pv ${fF.c}">${fF.t}</span></div>
+        <div class="ps${activeIdx===2?" active":""}">Merge<span class="pv ${mF.c}">${mF.t}</span></div>
+        <div class="ps${activeIdx===3?" active":""}">OSRM<span class="pv ${oF.c}">${oF.t}</span></div>
+      </div>
+      ${mapH}
+    </div>`;
+  }
+  rEl.innerHTML = html;
+}
+
+// ─── SSE ─────────────────────────────────────────────────────────────────
+let es = null;
+function connectSSE(){
+  if (es) { try { es.close(); } catch(_){} }
+  es = new EventSource("/stream");
+  es.onmessage = e => { try { render(JSON.parse(e.data)); } catch(err){ console.error(err); } };
+  es.onerror = () => {
+    document.getElementById("gs").textContent = "Reconnecting…";
+    document.getElementById("gd").className = "ld er";
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+// ─── init ────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const r = await fetch("/api");
+    const data = await r.json();
+    // Start loading all KMLs
+    await loadAllKmls(data.countries);
+    render(data);
+  } catch(_){}
+  connectSSE();
+})();
+</script>
+</body>
+</html>
