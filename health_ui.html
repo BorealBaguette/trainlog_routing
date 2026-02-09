@@ -4,7 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OSRM Monitor</title>
+
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Leaflet (basemap + polygons) -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""
+/>
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin=""
+></script>
+
 <style>
 :root{
   --bg:#07080c;--s1:#0e1017;--s2:#151820;--s3:#1c2030;--brd:#252a3a;
@@ -73,14 +88,22 @@ body{background:var(--bg);color:var(--tx);font-family:'Outfit',sans-serif;min-he
 .mp summary{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--txd);cursor:pointer;text-transform:uppercase;letter-spacing:1px;user-select:none}
 .mp summary:hover{color:var(--tx)}
 .mp-inner{margin-top:8px}
-.map-svg{width:100%;height:auto;display:block;background:var(--s2);border-radius:6px}
-.map-svg path.region{stroke-width:.3;stroke:var(--brd);transition:fill .3s}
-.map-svg .grid-line{stroke:var(--brd);stroke-width:.15;stroke-dasharray:2,2}
 .tgs{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
 .tg{font-family:'IBM Plex Mono',monospace;font-size:9px;background:var(--s2);border:1px solid var(--brd);border-radius:3px;padding:1px 6px;color:var(--txd)}
 
 .ft{text-align:center;margin-top:28px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--txd);opacity:.5}
 .ft a{color:var(--blu);text-decoration:none}
+
+/* Leaflet map container inside cards */
+.leaflet-map{
+  width:100%;
+  height:220px;
+  border-radius:6px;
+  overflow:hidden;
+  background:var(--s2);
+  border:1px solid var(--brd);
+}
+.leaflet-container{background:var(--s2)}
 </style>
 </head>
 <body>
@@ -89,12 +112,16 @@ body{background:var(--bg);color:var(--tx);font-family:'Outfit',sans-serif;min-he
     <h1>OSRM Monitor <span>/ routing health</span></h1>
     <div class="hr"><div class="ld" id="gd"></div><span id="gs">Connecting…</span><span id="ts">—</span></div>
   </div>
+
   <div class="st">Docker Containers</div>
   <div class="cts" id="cts"><div class="ct"><span class="s">Loading…</span></div></div>
+
   <div class="st">Routers</div>
   <div class="rg" id="rg"></div>
+
   <div class="ft"><a href="/api">JSON API</a> · <a href="/stream">SSE</a> · :5010 · live every 5 s</div>
 </div>
+
 <script>
 const IC  = {train:"\u{1f686}", ferry:"\u26f4\ufe0f", bus:"\u{1f68c}", aerialway:"\u{1f6a1}"};
 const CLR = {train:"#34d399",   ferry:"#60a5fa",      bus:"#fbbf24",   aerialway:"#a78bfa"};
@@ -105,8 +132,10 @@ const PHASE_STEP = {downloading:0, filtering:1, merging:2, extracting:3, partiti
 const kmlCache = {};
 const kmlLoading = new Set();
 
+// Leaflet map instances cache (one per details)
+const mapCache = {};
+
 function parseKmlCoords(text) {
-  // Extract all <coordinates> blocks, return array of rings
   const rings = [];
   const re = /<coordinates[^>]*>([\s\S]*?)<\/coordinates>/gi;
   let m;
@@ -145,7 +174,6 @@ async function loadKml(regionPath) {
 }
 
 async function loadAllKmls(countries) {
-  // Load all KMLs for all router types
   const allPaths = new Set();
   for (const paths of Object.values(countries)) {
     for (const p of paths) allPaths.add(p);
@@ -153,72 +181,60 @@ async function loadAllKmls(countries) {
   await Promise.all([...allPaths].map(p => loadKml(p)));
 }
 
-function buildMapSvg(regions, color) {
-  // regions = array of regionPaths for this router
-  // Collect all rings, compute bounding box, render SVG
-  const allRings = [];
+function ensureLeafletMap(elId, regions, color) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+
+  // If already created, just resize (IMPORTANT: only valid if DOM node still exists)
+  if (mapCache[elId]) {
+    try { mapCache[elId].invalidateSize(); } catch(_){}
+    return;
+  }
+
+  const map = L.map(el, {
+    zoomControl: false,
+    attributionControl: true,
+    dragging: true,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    keyboard: false,
+    tap: true
+  });
+
+  mapCache[elId] = map;
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 })
+    .addTo(map);
+
+  const bounds = L.latLngBounds([]);
+
   for (const rp of regions) {
-    const rings = kmlCache[rp];
-    if (rings) allRings.push(...rings);
-  }
+    const rings = kmlCache[rp] || [];
+    for (const ring of rings) {
+      const latlngs = ring.map(([lon, lat]) => [lat, lon]);
+      if (latlngs.length < 3) continue;
 
-  if (allRings.length === 0) {
-    return '<div style="text-align:center;padding:16px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--txd)">Loading map…</div>';
-  }
+      const poly = L.polygon(latlngs, {
+        color: color,
+        weight: 2,
+        opacity: 0.9,
+        fillColor: color,
+        fillOpacity: 0.25,
+      }).addTo(map);
 
-  // Bounding box with padding
-  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
-  for (const ring of allRings) {
-    for (const [lon, lat] of ring) {
-      if (lon < minLon) minLon = lon;
-      if (lon > maxLon) maxLon = lon;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
+      bounds.extend(poly.getBounds());
     }
   }
 
-  const padLon = (maxLon - minLon) * 0.08 + 2;
-  const padLat = (maxLat - minLat) * 0.08 + 2;
-  minLon -= padLon; maxLon += padLon;
-  minLat -= padLat; maxLat += padLat;
+  if (bounds.isValid()) map.fitBounds(bounds.pad(0.08));
+  else map.setView([20, 0], 2);
 
-  const W = 500;
-  const spanLon = maxLon - minLon;
-  const spanLat = maxLat - minLat;
-  const H = Math.max(80, Math.min(300, W * (spanLat / spanLon)));
-
-  const px = lon => ((lon - minLon) / spanLon) * W;
-  const py = lat => ((maxLat - lat) / spanLat) * H;
-
-  let paths = "";
-
-  // Grid lines
-  const gridLonStep = spanLon > 100 ? 30 : spanLon > 40 ? 10 : 5;
-  const gridLatStep = spanLat > 60 ? 20 : spanLat > 30 ? 10 : 5;
-  const startLon = Math.ceil(minLon / gridLonStep) * gridLonStep;
-  const startLat = Math.ceil(minLat / gridLatStep) * gridLatStep;
-  for (let lon = startLon; lon <= maxLon; lon += gridLonStep) {
-    const x = px(lon);
-    paths += `<line class="grid-line" x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H}"/>`;
+  const attr = map.attributionControl;
+  if (attr) {
+    attr.setPrefix(false);
+    attr.addAttribution("&copy; OpenStreetMap contributors");
   }
-  for (let lat = startLat; lat <= maxLat; lat += gridLatStep) {
-    const y = py(lat);
-    paths += `<line class="grid-line" x1="0" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}"/>`;
-  }
-
-  // Region polygons
-  for (const ring of allRings) {
-    let d = "";
-    for (let i = 0; i < ring.length; i++) {
-      const x = px(ring[i][0]).toFixed(1);
-      const y = py(ring[i][1]).toFixed(1);
-      d += (i === 0 ? "M" : "L") + x + "," + y;
-    }
-    d += "Z";
-    paths += `<path class="region" d="${d}" fill="${color}" fill-opacity="0.4"/>`;
-  }
-
-  return `<svg class="map-svg" viewBox="0 0 ${W} ${H.toFixed(0)}" xmlns="http://www.w3.org/2000/svg">${paths}</svg>`;
 }
 
 // ─── formatting ──────────────────────────────────────────────────────────
@@ -252,9 +268,9 @@ function render(data){
   const anyBld = Object.values(svcs).some(s => s.build_phase);
   const gd = document.getElementById("gd"), gs = document.getElementById("gs");
   if      (allUp && !anyBld) { gd.className="ld";    gs.textContent="All operational"; }
-  else if (anyBld)           { gd.className="ld wa";  gs.textContent="Build in progress"; }
-  else if (anyUp)            { gd.className="ld wa";  gs.textContent="Partial"; }
-  else                       { gd.className="ld er";  gs.textContent="All down"; }
+  else if (anyBld)           { gd.className="ld wa"; gs.textContent="Build in progress"; }
+  else if (anyUp)            { gd.className="ld wa"; gs.textContent="Partial"; }
+  else                       { gd.className="ld er"; gs.textContent="All down"; }
 
   // Containers
   const cEl = document.getElementById("cts");
@@ -293,22 +309,30 @@ function render(data){
     const activeIdx = building ? (PHASE_STEP[svc.build_phase] ?? -1) : -1;
     const bldH = building ? `<div class="rb"><div class="sp"></div>${esc(svc.build_phase)}…</div>` : "";
 
-    // Map
     const countries = data.countries[name] || [];
-    const allLoaded = countries.every(c => kmlCache[c]);
-    const mapSvg = allLoaded && countries.length ? buildMapSvg(countries, CLR[name]) : (countries.length ? '<div style="text-align:center;padding:16px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--txd)">Loading map…</div>' : '');
     const tags = countries.map(c => {
       const parts = c.split("/");
       return parts[parts.length - 1];
     });
+
     const mk = name + "-map";
     const wasOpen = openMap[mk];
 
+    const mapId = `map-${name}`;
+    const allLoaded = countries.every(c => kmlCache[c]);
+
+    const mapInner = countries.length
+      ? (allLoaded
+          ? `<div id="${mapId}" class="leaflet-map"></div>`
+          : `<div style="text-align:center;padding:16px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--txd)">Loading map…</div>`
+        )
+      : "";
+
     const mapH = countries.length
-      ? `<details class="mp" data-k="${mk}"${wasOpen?" open":""}>
+      ? `<details class="mp" data-k="${mk}" data-map="${mapId}" data-r="${name}"${wasOpen?" open":""}>
            <summary>${countries.length} regions</summary>
            <div class="mp-inner">
-             ${mapSvg}
+             ${mapInner}
              <div class="tgs">${tags.map(t=>`<span class="tg">${t}</span>`).join("")}</div>
            </div>
          </details>`
@@ -335,7 +359,32 @@ function render(data){
       ${mapH}
     </div>`;
   }
+
+  // ✅ IMPORTANT: we rebuild the whole DOM every tick, so Leaflet maps must be destroyed first
+  for (const [id, m] of Object.entries(mapCache)) {
+    try { m.remove(); } catch(_){}
+    delete mapCache[id];
+  }
+
   rEl.innerHTML = html;
+
+  // Lazy-init maps when <details> opens (and also init immediately if already open)
+  rEl.querySelectorAll('details.mp').forEach(d => {
+    const init = () => {
+      if (!d.open) return;
+      const routerName = d.dataset.r;
+      const mapId = d.dataset.map;
+      const regions = data.countries[routerName] || [];
+      const ready = regions.every(rp => kmlCache[rp]);
+      if (!ready) return;
+
+      ensureLeafletMap(mapId, regions, CLR[routerName]);
+      setTimeout(() => ensureLeafletMap(mapId, regions, CLR[routerName]), 0);
+    };
+
+    d.addEventListener('toggle', init, { once: false });
+    init();
+  });
 }
 
 // ─── SSE ─────────────────────────────────────────────────────────────────

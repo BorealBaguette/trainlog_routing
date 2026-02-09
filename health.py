@@ -240,19 +240,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Connection", "keep-alive")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
+
+            # initial payload
             self.wfile.write(f"data: {json.dumps(get_all_data())}\n\n".encode())
             self.wfile.flush()
+
             with clients_lock:
                 clients.append(self)
+
             try:
                 while True:
-                    time.sleep(1)
+                    # heartbeat every 15s (SSE comment line)
+                    time.sleep(15)
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
             except Exception:
                 pass
             finally:
                 with clients_lock:
                     if self in clients:
                         clients.remove(self)
+
 
         elif self.path.startswith("/kml/") and self.path.endswith(".kml"):
             # Serve KML files: /kml/europe/france.kml -> kml/europe/france.kml
@@ -291,6 +299,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=sse_loop, daemon=True).start()
-    srv = http.server.HTTPServer(("0.0.0.0", PORT), Handler)
+    srv = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"Health monitor on :{PORT}")
     srv.serve_forever()
