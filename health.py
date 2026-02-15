@@ -17,6 +17,7 @@ SERVICES = {
     "ferry":     {"container": "ferry_routing",     "port": 5001, "output": "output/filtered_ferry.osrm"},
     "bus":       {"container": "bus_routing",       "port": 5002, "output": "output/filtered_bus.osrm"},
     "aerialway": {"container": "aerialway_routing", "port": 5003, "output": "output/filtered_aerialway.osrm"},
+    "ski":       {"container": "ski_routing",       "port": 5004, "output": "output/filtered_ski.osrm"},
 }
 
 # ---------------------------------------------------------------------------
