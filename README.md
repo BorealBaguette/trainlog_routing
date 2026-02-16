@@ -16,6 +16,7 @@ This repo contains the router used by: https://github.com/simfr24/Trainlog to ro
 2. At https://trainlog.me/ start making a train route as normal, before clicking "submit" open the network view in your browsers setting.
 3. After clicking submit search through the requests to find one to the deployed router. This should look like: "https://trainlog.me/forwardRouting/train/route/v1/train/-1.4621381,53.3783713;-1.548621,53.794414?overview=false&alternatives=true&steps=true"
 4. Replace the first section with your local router - for example: "localhost:5000/route/v1/train/-1.4621381,53.3783713;-1.548621,53.794414?overview=false&alternatives=true&steps=true"
+   4a. Top tip - remove all the query parameters to make it easier to read the response, you are looking for the "geometry" value in the response which is a Polyline of the route
 5. Copy the Polyline from the geometry value to a site like: https://valhalla.github.io/demos/polyline/?unescape=true&polyline6=false to view it
 
 When finished the router can be stopped using: docker stop train_routing
