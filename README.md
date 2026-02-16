@@ -18,6 +18,6 @@ This repo contains the router used by: https://github.com/simfr24/Trainlog to ro
 4. Replace the first section with your local router - for example: "localhost:5000/route/v1/train/-1.4621381,53.3783713;-1.548621,53.794414?overview=false&alternatives=true&steps=true"
 5. Copy the Polyline from the geometry value to a site like: https://valhalla.github.io/demos/polyline/?unescape=true&polyline6=false to view it
 
-When finished the router can be stopped using: Docker stop train_routing
+When finished the router can be stopped using: docker stop train_routing
 
 If you need to re-install the router delete everything in the Output folder
