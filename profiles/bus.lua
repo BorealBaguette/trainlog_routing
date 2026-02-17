@@ -64,7 +64,8 @@ function setup()
       'arch',
       'bus',
       'psv',
-      'bus_trap'
+      'bus_trap',
+      'swing_gate'
     },
 
     access_tag_whitelist = Set {
