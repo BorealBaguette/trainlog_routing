@@ -265,7 +265,7 @@ serve-ski: ski
 		-v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 \
 		osrm-routed --algorithm mld /opt/host/output/filtered_ski.osrm
 
-serve-all: serve-train serve-aerialway ski serve-ferry serve-bus
+serve-all: serve-train serve-aerialway serve-ski serve-ferry serve-bus
 
 # ── Health server (no pip install, no external deps) ──────────────────────
 serve-health: download-kmls
