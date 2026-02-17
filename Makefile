@@ -1,7 +1,7 @@
 .PRECIOUS: %.pbf
 .SECONDARY: $(COUNTRIES_PBF)
 
-$(shell mkdir -p world output output/stats filtered_ferry filtered_train filtered_bus filtered_aerialway world/africa world/asia world/australia-oceania world/central-america world/europe world/north-america world/south-america)
+$(shell mkdir -p world output output/stats filtered_ferry filtered_train filtered_bus filtered_aerialway filtered_ski world/africa world/asia world/australia-oceania world/central-america world/europe world/north-america world/south-america)
 
 # Common variables for train, ferry, aerialway
 WANTED_COUNTRIES := $(shell grep -v "\#" countries.wanted)
@@ -61,6 +61,15 @@ filtered_aerialway/%.osm.pbf: world/%.osm.pbf params/aerialway_filter.params
 	echo '{"step":"filter","type":"aerialway","file":"$*","duration_s":'$$((END-START))',"size_bytes":'$$SIZE',"timestamp":"'$$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
 		> output/stats/filter_aerialway_$(subst /,_,$*).json
 
+filtered_ski/%.osm.pbf: world/%.osm.pbf params/ski_filter.params
+	@mkdir -p filtered_ski
+	@START=$$(date +%s); \
+	osmium tags-filter --expressions=params/ski_filter.params $< -o $@ --overwrite --progress -v; \
+	END=$$(date +%s); \
+	SIZE=$$(stat -c%s "$@" 2>/dev/null || echo 0); \
+	echo '{"step":"filter","type":"ski","file":"$*","duration_s":'$$((END-START))',"size_bytes":'$$SIZE',"timestamp":"'$$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
+		> output/stats/filter_ski_$(subst /,_,$*).json
+
 filtered_bus/%.osm.pbf: world/%.osm.pbf params/bus_filter.params
 	@mkdir -p $(dir $@)
 	@START=$$(date +%s); \
@@ -94,6 +103,14 @@ output/filtered_aerialway.osm.pbf: $(subst world,filtered_aerialway,$(COUNTRIES_
 	SIZE=$$(stat -c%s "$@" 2>/dev/null || echo 0); \
 	echo '{"step":"merge","type":"aerialway","duration_s":'$$((END-START))',"size_bytes":'$$SIZE',"input_count":'$(words $^)',"timestamp":"'$$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
 		> output/stats/merge_aerialway.json
+
+output/filtered_ski.osm.pbf: $(subst world,filtered_ski,$(COUNTRIES_PBF))
+	@START=$$(date +%s); \
+	osmium merge $^ -o $@ --overwrite; \
+	END=$$(date +%s); \
+	SIZE=$$(stat -c%s "$@" 2>/dev/null || echo 0); \
+	echo '{"step":"merge","type":"ski","duration_s":'$$((END-START))',"size_bytes":'$$SIZE',"input_count":'$(words $^)',"timestamp":"'$$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
+		> output/stats/merge_ski.json
 
 output/filtered_bus.osm.pbf: $(BUS_FILTERED_PBF)
 	@START=$$(date +%s); \
@@ -143,6 +160,19 @@ output/filtered_aerialway.osrm: output/filtered_aerialway.osm.pbf profiles/aeria
 		> output/stats/osrm_aerialway.json
 	@rm -f output/.aerialway_building.lock
 
+output/filtered_ski.osrm: output/filtered_ski.osm.pbf profiles/ski.lua
+	@echo extracting > output/.ski_building.lock
+	@START=$$(date +%s); \
+	docker run --rm -t -v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 osrm-extract -p /opt/host/profiles/ski.lua /opt/host/$<; \
+	echo partitioning > output/.ski_building.lock; \
+	docker run --rm -t -v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 osrm-partition /opt/host/$<; \
+	echo customizing > output/.ski_building.lock; \
+	docker run --rm -t -v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 osrm-customize /opt/host/$<; \
+	END=$$(date +%s); \
+	echo '{"step":"osrm_build","type":"ski","duration_s":'$$((END-START))',"timestamp":"'$$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
+		> output/stats/osrm_ski.json
+	@rm -f output/.ski_building.lock
+
 output/filtered_bus.osrm: output/filtered_bus.osm.pbf profiles/bus.lua
 	@echo extracting > output/.bus_building.lock
 	@START=$$(date +%s); \
@@ -184,6 +214,15 @@ aerialway:
 	@$(MAKE) --no-print-directory output/filtered_aerialway.osm.pbf
 	@$(MAKE) --no-print-directory output/filtered_aerialway.osrm
 
+ski:
+	@echo downloading > output/.ski_building.lock
+	@$(MAKE) --no-print-directory $(COUNTRIES_PBF)
+	@echo filtering > output/.ski_building.lock
+	@$(MAKE) --no-print-directory $(subst world,filtered_ski,$(COUNTRIES_PBF))
+	@echo merging > output/.ski_building.lock
+	@$(MAKE) --no-print-directory output/filtered_ski.osm.pbf
+	@$(MAKE) --no-print-directory output/filtered_ski.osrm
+
 ferry:
 	@echo downloading > output/.ferry_building.lock
 	@$(MAKE) --no-print-directory $(COUNTRIES_PBF)
@@ -193,7 +232,7 @@ ferry:
 	@$(MAKE) --no-print-directory output/filtered_ferry.osm.pbf
 	@$(MAKE) --no-print-directory output/filtered_ferry.osrm
 
-all: train ferry bus aerialway
+all: train ferry bus aerialway ski
 
 # ── Serve targets ─────────────────────────────────────────────────────────
 serve-train: train
@@ -220,7 +259,13 @@ serve-aerialway: aerialway
 		-v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 \
 		osrm-routed --algorithm mld /opt/host/output/filtered_aerialway.osrm
 
-serve-all: serve-train serve-aerialway serve-ferry serve-bus
+serve-ski: ski
+	-@docker stop ski_routing > /dev/null 2>&1 && docker rm ski_routing > /dev/null 2>&1 ||:
+	docker run --restart always --name ski_routing -t -d -p 5004:5000 \
+		-v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 \
+		osrm-routed --algorithm mld /opt/host/output/filtered_ski.osrm
+
+serve-all: serve-train serve-aerialway ski serve-ferry serve-bus
 
 # ── Health server (no pip install, no external deps) ──────────────────────
 serve-health: download-kmls
@@ -250,6 +295,12 @@ clean-aerialway:
 	-@rm filtered_aerialway/* > /dev/null 2>&1 ||:
 	-@rm output/stats/*aerialway* > /dev/null 2>&1 ||:
 
+clean-ski:
+	-@rm -f output/.ski_building.lock
+	-@rm output/filtered_ski* > /dev/null 2>&1 ||:
+	-@rm filtered_ski/* > /dev/null 2>&1 ||:
+	-@rm output/stats/*ski* > /dev/null 2>&1 ||:
+
 clean-ferry:
 	-@rm -f output/.ferry_building.lock
 	-@rm output/filtered_ferry* > /dev/null 2>&1 ||:
@@ -267,12 +318,12 @@ clean-health:
 
 # refresh-all does NOT touch health_server
 refresh-all:
-	$(MAKE) clean-bus clean-train clean-aerialway clean-ferry
+	$(MAKE) clean-bus clean-train clean-aerialway clean-ski clean-ferry
 	$(MAKE) serve-all
 
 # Also restart health
 refresh-everything:
-	$(MAKE) clean-bus clean-train clean-aerialway clean-ferry
+	$(MAKE) clean-bus clean-train clean-aerialway clean-ski clean-ferry
 	$(MAKE) serve-all serve-health
 
-clean: clean-bus clean-train clean-aerialway clean-ferry clean-downloads clean-kmls clean-health
+clean: clean-bus clean-train clean-aerialway clean-ski clean-ferry clean-downloads clean-kmls clean-health
