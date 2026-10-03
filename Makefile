@@ -80,12 +80,21 @@ filtered_bus/%.osm.pbf: world/%.osm.pbf params/bus_filter.params
 		> output/stats/filter_bus_$(subst /,_,$*).json
 
 # ── Merge ─────────────────────────────────────────────────────────────────
-output/filtered_ferry.osm.pbf: $(subst world,filtered_ferry,$(COUNTRIES_PBF))
+# Ferry ways are joined at ports by short connectors so waypoints that snap to
+# the "wrong" ferry line can still transfer (see scripts/connect_ferries.py)
+FERRY_CONNECT_RADIUS ?= 500
+
+output/filtered_ferry.osm.pbf: $(subst world,filtered_ferry,$(COUNTRIES_PBF)) scripts/connect_ferries.py
 	@START=$$(date +%s); \
-	osmium merge $^ -o $@ --overwrite; \
+	osmium merge $(filter %.pbf,$^) -o output/filtered_ferry_merged.opl --overwrite && \
+	docker run --rm -v $$(pwd):/opt/host python:3.11-slim python /opt/host/scripts/connect_ferries.py \
+		/opt/host/output/filtered_ferry_merged.opl /opt/host/output/filtered_ferry_connectors.opl $(FERRY_CONNECT_RADIUS) && \
+	osmium cat output/filtered_ferry_merged.opl output/filtered_ferry_connectors.opl -o output/filtered_ferry_unsorted.osm.pbf --overwrite && \
+	osmium sort output/filtered_ferry_unsorted.osm.pbf -o $@ --overwrite; \
+	rm -f output/filtered_ferry_merged.opl output/filtered_ferry_connectors.opl output/filtered_ferry_unsorted.osm.pbf; \
 	END=$$(date +%s); \
 	SIZE=$$(stat -c%s "$@" 2>/dev/null || echo 0); \
-	echo '{"step":"merge","type":"ferry","duration_s":'$$((END-START))',"size_bytes":'$$SIZE',"input_count":'$(words $^)',"timestamp":"'$$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
+	echo '{"step":"merge","type":"ferry","duration_s":'$$((END-START))',"size_bytes":'$$SIZE',"input_count":'$(words $(filter %.pbf,$^))',"timestamp":"'$$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
 		> output/stats/merge_ferry.json
 
 output/filtered_train.osm.pbf: $(subst world,filtered_train,$(COUNTRIES_PBF))

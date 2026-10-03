@@ -6,6 +6,7 @@ Handlers = require("lib/way_handlers")
 
 function setup()
   local ferry_speed = 30  -- ferry speed in km/h
+  local connector_speed = 5  -- km/h, port transfers added by scripts/connect_ferries.py
   return {
     properties = {
       weight_name                   = 'duration',
@@ -16,6 +17,7 @@ function setup()
 
     default_mode            = mode.ferry,
     default_speed           = ferry_speed,
+    connector_speed         = connector_speed,
     oneway_handling         = 'ignore',  -- allow traversal in both directions
 
     -- Only allow ways tagged as ferry route
@@ -41,8 +43,12 @@ function process_way(profile, way, result)
   if is_ferry == 'ferry' then
     result.forward_mode = mode.ferry
     result.backward_mode = mode.ferry
-    result.forward_speed = profile.default_speed
-    result.backward_speed = profile.default_speed
+    local speed = profile.default_speed
+    if way:get_value_by_key('trainlog:connector') == 'yes' then
+      speed = profile.connector_speed
+    end
+    result.forward_speed = speed
+    result.backward_speed = speed
   else
     -- If it's not a ferry, simply return without setting any mode or speed
     return
