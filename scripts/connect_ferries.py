@@ -5,14 +5,18 @@ OSRM snaps each waypoint to the single nearest ferry way, so a waypoint at a
 port often lands on a local ferry that is not connected to the line the user
 actually took, and the route fails with NoRoute.
 
-This script links every port to the nearest node of each other connected
-component within RADIUS metres, using a slow connector way tagged
+This script links every port to the nearest node of each other ferry way
+within RADIUS metres, using a slow connector way tagged
 route=ferry + trainlog:connector=yes (see profiles/ferry.lua).
 
 A port is a ferry way endpoint that is either a dead end or tagged as a ferry
 terminal. Untagged endpoints shared by several ways are skipped: they are
 usually just where a line is split at sea, and linking them would let routes
 jump between lines that merely pass close to each other.
+
+Links are made per way rather than per connected network: two lines that
+only meet far out at sea count as one network, but a port must still get a
+link to each of their quays.
 
 Usage: connect_ferries.py <input.opl> <output.opl> [radius_m]
 Only uses the standard library so it can run in python:*-slim.
@@ -48,22 +52,6 @@ def parse(path):
     return nodes, ways, port_tagged
 
 
-def components(ways):
-    parent = {}
-
-    def find(x):
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    for refs in ways.values():
-        for n in refs[1:]:
-            parent[find(n)] = find(refs[0])
-    return find
-
-
 def dist(a, b):
     lat1, lat2 = math.radians(a[1]), math.radians(b[1])
     dx = math.radians(b[0] - a[0]) * math.cos((lat1 + lat2) / 2)
@@ -74,44 +62,39 @@ def main():
     src, dst = sys.argv[1], sys.argv[2]
     radius = float(sys.argv[3]) if len(sys.argv) > 3 else 1000
     nodes, ways, port_tagged = parse(src)
-    find = components(ways)
 
     # Grid index of every ferry node, cell size ~radius in latitude degrees
     cell = radius / 111000
     grid = defaultdict(list)
-    for refs in ways.values():
+    node_ways = defaultdict(set)
+    for wid, refs in ways.items():
         for n in refs:
+            node_ways[n].add(wid)
             if n in nodes:
                 x, y = nodes[n]
-                grid[(int(x // cell), int(y // cell))].append(n)
+                grid[(int(x // cell), int(y // cell))].append((n, wid))
 
-    way_count = defaultdict(int)
-    for refs in ways.values():
-        for n in set(refs):
-            way_count[n] += 1
     ports = {
         r
         for refs in ways.values() if refs
         for r in (refs[0], refs[-1])
-        if r in nodes and (way_count[r] == 1 or r in port_tagged)
+        if r in nodes and (len(node_ways[r]) == 1 or r in port_tagged)
     }
     pairs = set()
     for a in ports:
         pa = nodes[a]
-        ca = find(a)
         # Widen the longitude search at high latitudes
         span = int(math.ceil(1 / max(math.cos(math.radians(pa[1])), 0.01)))
         gx, gy = int(pa[0] // cell), int(pa[1] // cell)
         best = {}
         for ix in range(gx - span, gx + span + 1):
             for iy in range(gy - 1, gy + 2):
-                for b in grid.get((ix, iy), ()):
-                    cb = find(b)
-                    if cb == ca:
+                for b, wb in grid.get((ix, iy), ()):
+                    if wb in node_ways[a]:
                         continue
                     d = dist(pa, nodes[b])
-                    if d <= radius and (cb not in best or d < best[cb][0]):
-                        best[cb] = (d, b)
+                    if d <= radius and (wb not in best or d < best[wb][0]):
+                        best[wb] = (d, b)
         for _, b in best.values():
             pairs.add((min(a, b), max(a, b)))
 
