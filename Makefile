@@ -244,33 +244,39 @@ ferry:
 all: train ferry bus aerialway ski
 
 # ── Serve targets ─────────────────────────────────────────────────────────
-serve-train: train
+# Routers join this network so nginx can reach them by container name
+DOCKER_NETWORK ?= trainlog_network
+
+docker-network:
+	@docker network inspect $(DOCKER_NETWORK) > /dev/null 2>&1 || docker network create $(DOCKER_NETWORK)
+
+serve-train: train docker-network
 	-@docker stop train_routing > /dev/null 2>&1 && docker rm train_routing > /dev/null 2>&1 ||:
-	docker run --restart always --name train_routing -t -d -p 5000:5000 \
+	docker run --restart always --name train_routing -t -d --network $(DOCKER_NETWORK) -p 5000:5000 \
 		-v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 \
 		osrm-routed --algorithm mld /opt/host/output/filtered_train.osrm
 
-serve-ferry: ferry
+serve-ferry: ferry docker-network
 	-@docker stop ferry_routing > /dev/null 2>&1 && docker rm ferry_routing > /dev/null 2>&1 ||:
-	docker run --restart always --name ferry_routing -t -d -p 5001:5000 \
+	docker run --restart always --name ferry_routing -t -d --network $(DOCKER_NETWORK) -p 5001:5000 \
 		-v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 \
 		osrm-routed --algorithm mld /opt/host/output/filtered_ferry.osrm
 
-serve-bus: bus
+serve-bus: bus docker-network
 	-@docker stop bus_routing > /dev/null 2>&1 && docker rm bus_routing > /dev/null 2>&1 ||:
-	docker run --restart always --name bus_routing -t -d -p 5002:5000 \
+	docker run --restart always --name bus_routing -t -d --network $(DOCKER_NETWORK) -p 5002:5000 \
 		-v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 \
 		osrm-routed --algorithm mld /opt/host/output/filtered_bus.osrm
 
-serve-aerialway: aerialway
+serve-aerialway: aerialway docker-network
 	-@docker stop aerialway_routing > /dev/null 2>&1 && docker rm aerialway_routing > /dev/null 2>&1 ||:
-	docker run --restart always --name aerialway_routing -t -d -p 5003:5000 \
+	docker run --restart always --name aerialway_routing -t -d --network $(DOCKER_NETWORK) -p 5003:5000 \
 		-v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 \
 		osrm-routed --algorithm mld /opt/host/output/filtered_aerialway.osrm
 
-serve-ski: ski
+serve-ski: ski docker-network
 	-@docker stop ski_routing > /dev/null 2>&1 && docker rm ski_routing > /dev/null 2>&1 ||:
-	docker run --restart always --name ski_routing -t -d -p 5004:5000 \
+	docker run --restart always --name ski_routing -t -d --network $(DOCKER_NETWORK) -p 5004:5000 \
 		-v $$(pwd):/opt/host ghcr.io/project-osrm/osrm-backend:v6.0.0 \
 		osrm-routed --algorithm mld /opt/host/output/filtered_ski.osrm
 
