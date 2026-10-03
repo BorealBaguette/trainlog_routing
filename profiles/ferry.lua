@@ -13,6 +13,9 @@ function setup()
       max_speed_for_map_matching    = 120/3.6,  -- kmph -> m/s
       call_tagless_node_function    = false,
       use_turn_restrictions         = false,
+      -- Ferries reverse at ports: don't force the route to sail past a via
+      -- waypoint looking for somewhere to turn around
+      continue_straight_at_waypoint = false,
     },
 
     default_mode            = mode.ferry,
